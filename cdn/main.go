@@ -9,8 +9,22 @@ import (
 // OriginServerの場所
 const originURL = "http://localhost:8080"
 
+// キャッシュ用。URL->レスポンス本文
+var cache = map[string][]byte{}
+
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("proxy received:", r.Method, r.URL.Path)
+
+	key := r.URL.String()
+
+	// キャッシュの確認
+	if data, ok := cache[key]; ok {
+		log.Println("cache hit:", key)
+		w.Write(data)
+		return
+	} else {
+		log.Println("cache miss:", key)
+	}
 
 	// クライアントからのリクエストをOriginServerに転送する
 	targetURL := originURL + r.URL.Path
@@ -32,12 +46,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// 関数の最後で必ずbodyを閉じる。retunで抜けても動く
 	defer resp.Body.Close()
 
-	// OriginServerからのレスポンスをそのままクライアントに返す(ただの中継)
 	w.WriteHeader(resp.StatusCode)
-	_, err = io.Copy(w, resp.Body)
+	var body []byte
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
-		log.Println("failed to copy response:", err)
+		http.Error(w, "failed to read response", http.StatusInternalServerError)
+		return
 	}
+
+	// キャッシュに保存
+	cache[key] = body
+
+	// クライアントに返す
+	w.Write(body)
 }
 
 func main() {
