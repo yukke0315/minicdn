@@ -4,13 +4,20 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 // OriginServerの場所
 const originURL = "http://localhost:8080"
 
+// キャッシュ用構造体
+type CacheEntry struct {
+	body []byte
+	expiresAt time.Time
+}
+
 // キャッシュ用。URL->レスポンス本文
-var cache = map[string][]byte{}
+var cache = map[string]CacheEntry{}
 
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("proxy received:", r.Method, r.URL.Path)
@@ -18,13 +25,19 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	key := r.URL.String()
 
 	// キャッシュの確認
-	if data, ok := cache[key]; ok {
-		log.Println("cache hit:", key)
-		w.Write(data)
-		return
-	} else {
-		log.Println("cache miss:", key)
+	if entry, ok := cache[key]; ok {
+		// 有効期限の確認
+		if time.Now().Before(entry.expiresAt) {
+			log.Println("cache hit:", key)
+			w.Write(entry.body)
+			return
+		} else {
+			log.Println("cache expired:", key)
+			delete(cache, key)
+		}
 	}
+
+	log.Println("cache miss:", key)
 
 	// クライアントからのリクエストをOriginServerに転送する
 	targetURL := originURL + r.URL.Path
@@ -55,7 +68,11 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// キャッシュに保存
-	cache[key] = body
+	cache[key] = CacheEntry{
+		body: body,
+		// キャッシュの期限（60s）
+		expiresAt: time.Now().Add(60 * time.Second),
+	}
 
 	// クライアントに返す
 	w.Write(body)
