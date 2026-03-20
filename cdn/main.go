@@ -24,6 +24,34 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	key := r.URL.String()
 
+	// GET以外のリクエストはキャッシュせずにそのまま転送する
+	if r.Method != "GET" {
+		targetURL := originURL + r.URL.Path
+
+		req, err := http.NewRequest(r.Method, targetURL, r.Body)
+		if err != nil {
+			http.Error(w, "failed to create request", http.StatusInternalServerError)
+			return
+		}	
+		req.Header = r.Header
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, "failed to reach origin", http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		w.WriteHeader(resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			http.Error(w, "failed to read response", http.StatusInternalServerError)
+			return
+		}
+		w.Write(body)
+		return
+	}
+
 	// キャッシュの確認
 	if entry, ok := cache[key]; ok {
 		// 有効期限の確認
