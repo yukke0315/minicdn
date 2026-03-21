@@ -19,6 +19,34 @@ type CacheEntry struct {
 // キャッシュ用。URL->レスポンス本文
 var cache = map[string]CacheEntry{}
 
+func fetchFromOrigin(r *http.Request) (*http.Response, []byte, error) {
+	// クライアントからのリクエストをOriginServerに転送する
+	targetURL := originURL + r.URL.Path
+
+	// メソッド、ボディは保持してURLのみ変更してリクエスト作成
+	req, err := http.NewRequest(r.Method, targetURL, r.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req.Header = r.Header
+
+	// OriginServerに送信
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 関数の最後で必ずbodyを閉じる。retunで抜けても動く
+	defer resp.Body.Close()
+	return resp, body, nil
+}
+
 func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("proxy received:", r.Method, r.URL.Path)
 
