@@ -12,7 +12,7 @@ const originURL = "http://localhost:8080"
 
 // キャッシュ用構造体
 type CacheEntry struct {
-	body []byte
+	body      []byte
 	expiresAt time.Time
 }
 
@@ -37,13 +37,14 @@ func fetchFromOrigin(r *http.Request) (*http.Response, []byte, error) {
 		return nil, nil, err
 	}
 
-	body, err = io.ReadAll(resp.Body)
+	// respがnilでないので以降どこでreturnしても閉じられる
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 関数の最後で必ずbodyを閉じる。retunで抜けても動く
-	defer resp.Body.Close()
 	return resp, body, nil
 }
 
@@ -60,7 +61,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, "failed to create request", http.StatusInternalServerError)
 			return
-		}	
+		}
 		req.Header = r.Header
 
 		resp, err := http.DefaultClient.Do(req)
@@ -97,7 +98,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// クライアントからのリクエストをOriginServerに転送する
 	targetURL := originURL + r.URL.Path
-	
+
 	// メソッド、ボディは保持してURLのみ変更してリクエスト作成
 	req, err := http.NewRequest(r.Method, targetURL, r.Body)
 	if err != nil {
