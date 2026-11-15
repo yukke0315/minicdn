@@ -55,28 +55,12 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// GET以外のリクエストはキャッシュせずにそのまま転送する
 	if r.Method != "GET" {
-		targetURL := originURL + r.URL.Path
-
-		req, err := http.NewRequest(r.Method, targetURL, r.Body)
+		_, body, err := fetchFromOrigin(r)
 		if err != nil {
-			http.Error(w, "failed to create request", http.StatusInternalServerError)
+			http.Error(w, "failed to fetch from origin", http.StatusBadGateway)
 			return
 		}
-		req.Header = r.Header
 
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			http.Error(w, "failed to reach origin", http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
-
-		w.WriteHeader(resp.StatusCode)
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			http.Error(w, "failed to read response", http.StatusInternalServerError)
-			return
-		}
 		w.Write(body)
 		return
 	}
@@ -97,30 +81,9 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("cache miss:", key)
 
 	// クライアントからのリクエストをOriginServerに転送する
-	targetURL := originURL + r.URL.Path
-
-	// メソッド、ボディは保持してURLのみ変更してリクエスト作成
-	req, err := http.NewRequest(r.Method, targetURL, r.Body)
+	_, body, err := fetchFromOrigin(r)
 	if err != nil {
-		http.Error(w, "failed to create request", http.StatusInternalServerError)
-		return
-	}
-	req.Header = r.Header
-
-	// OriginServerに送信
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		http.Error(w, "failed to reach origin", http.StatusBadGateway)
-		return
-	}
-	// 関数の最後で必ずbodyを閉じる。retunで抜けても動く
-	defer resp.Body.Close()
-
-	w.WriteHeader(resp.StatusCode)
-	var body []byte
-	body, err = io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "failed to read response", http.StatusInternalServerError)
+		http.Error(w, "failed to fetch from origin", http.StatusBadGateway)
 		return
 	}
 

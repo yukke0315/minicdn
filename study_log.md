@@ -73,3 +73,45 @@
 - 次にやること:
   - ステータスコード200の場合だけをキャッシュ対象にする
   - 関数整理
+
+## Day 7: 新環境のセットアップとfetchFromOriginの修正
+
+- やったこと:
+  - Mac miniにGoをインストール（brew）、gitのuser.name / user.emailを設定
+  - `go mod init github.com/yukke0315/minicdn` でgo.modを作成
+  - fetchFromOriginのコンパイルエラー（undefined: body）を修正
+  - `defer resp.Body.Close()` の位置を修正
+
+- 学んだこと:
+  - go.modは「このフォルダは1つのGoプロジェクト」という宣言ファイル。`go build ./cdn` のようにフォルダ単位で扱うには必要
+  - `go build ./...` で全パッケージをコンパイルチェックだけできる（実行ファイルを出さない）
+  - エラーの `40:2` は「40行目の2文字目」
+  - `=` は代入だけ、`:=` は宣言＋代入
+    - `:=` は左辺に新しい変数が1つ以上あればOK。既存の変数（errなど）は代入になる
+    - 新しい変数が1つもないと `no new variables on left side of :=` でエラー
+  - `defer` は書いた時点で予約される。予約前にreturnすると動かない
+    - `Do` のエラーチェック直後（respがnilでないと確定した場所）に書けば、以降どこでreturnしても閉じられる
+  - Bodyを閉じても `resp.StatusCode` や `resp.Header` は使える
+
+- 次にやること:
+  - fetchFromOriginをproxyHandlerで使って重複を消す
+
+## Day 8: proxyHandlerの重複処理をfetchFromOriginにまとめる
+
+- やったこと:
+  - GET以外の転送とキャッシュミス時の取得を、fetchFromOriginの呼び出しに置き換え（約40行削減）
+  - キャッシュミス時に `w.Write(body)` を2回呼んでいたバグを修正
+  - CLAUDE.local.md（Claudeとの進め方のルール）を作成し、.gitignoreで除外
+
+- 学んだこと:
+  - `w.Write` は1つのレスポンスの本文に後ろから追記していく。2回呼ぶと本文が2回分つながる。取り消せない
+  - 最初の `Write` の時点でステータスコードとヘッダーは送信済みになる → 後から `WriteHeader` しても手遅れ
+  - `missing return` エラーが出るのは戻り値がある関数だけ。ハンドラでreturnを忘れてもコンパイルは通り、下の処理に流れ込む
+  - 動いているように見えても条件（miss / hit）で結果が違うことがある。ケースごとに出力を見比べるとバグに気づける
+
+- 疑問点:
+  - 今は `_, body, err := fetchFromOrigin(r)` でrespを捨てているので、Originが404を返してもクライアントには200で返ってしまう
+
+- 次にやること:
+  - ステータスコード200の場合だけをキャッシュ対象にする（resp.StatusCodeを使う）
+  - Originのステータスコードをクライアントにも返す
